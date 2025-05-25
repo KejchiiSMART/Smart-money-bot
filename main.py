@@ -10,8 +10,8 @@ from datetime import datetime, timedelta
 import os
 
 # === KONFIGURACJA ===
-ACCESS_TOKEN = "YOUR_OANDA_API_KEY"
-ACCOUNT_ID = "YOUR_OANDA_ACCOUNT_ID"
+ACCESS_TOKEN = "2659431c38a53799eaac65e12b6e7860-1dc26783adf8dda1740bf95fa15e72dd"
+ACCOUNT_ID = "101-004-28685974-004"
 INSTRUMENT = "XAU_USD"
 GRANULARITY = "M1"  # interwał 1 minuta
 
