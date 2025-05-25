@@ -66,6 +66,21 @@ def fetch_oanda_data():
 
     return np.array(X), np.array(y)
 
+def generate_signal(model):
+    # Pobierz najnowsze dane (ostatnia świeca)
+    X, _ = fetch_oanda_data()
+    if len(X) == 0:
+        print("⚠️ Brak danych do analizy.")
+        return None
+
+    last_data = X[-1].reshape(1, -1)  # przygotuj do predykcji
+    prediction = model.predict(last_data)[0]
+
+    signal = "BUY" if prediction == 1 else "SELL"
+    print(f"📢 Wygenerowany sygnał: {signal}")
+    return signal
+
+
 
 def analyze_and_train(model):
     X, y = fetch_oanda_data()
