@@ -15,9 +15,20 @@ model_path = "smart_money_model.pkl"
 def load_or_create_model():
     if os.path.exists(model_path):
         print("📦 Ładowanie istniejącego modelu...")
-        return joblib.load(model_path)
+        try:
+            return joblib.load(model_path)
+        except Exception as e:
+            print(f"❌ Błąd ładowania modelu: {e}")
+            os.remove(model_path)
+            print("🧹 Usunięto uszkodzony model, tworzenie nowego...")
+
     print("🧠 Tworzenie nowego modelu...")
-    return SGDClassifier()
+    model = SGDClassifier()
+    X, y = fetch_mock_data()
+    model.partial_fit(X, y, classes=np.array([0, 1]))
+    joblib.dump(model, model_path)
+    print("✅ Nowy model zapisany.")
+    return model
 
 def fetch_mock_data():
     # Przykładowe dane symulujące rynek
