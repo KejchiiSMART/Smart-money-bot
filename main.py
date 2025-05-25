@@ -6,8 +6,11 @@ from oandapyV20 import API
 import oandapyV20.endpoints.instruments as instruments
 from datetime import datetime
 
-ACCESS_TOKEN = "YOUR_OANDA_API_KEY"
-ACCOUNT_ID = "YOUR_ACCOUNT_ID"
+import os
+
+ACCESS_TOKEN = os.getenv("ACCESS_TOKEN")
+ACCOUNT_ID = os.getenv("ACCOUNT_ID")
+
 INSTRUMENT = "XAU_USD"
 GRANULARITY = "M1"
 
