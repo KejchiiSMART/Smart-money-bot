@@ -24,20 +24,51 @@ def load_or_create_model():
 
     print("🧠 Tworzenie nowego modelu...")
     model = SGDClassifier()
-    X, y = fetch_mock_data()
+    X, y = fetch_oanda_data()
     model.partial_fit(X, y, classes=np.array([0, 1]))
     joblib.dump(model, model_path)
     print("✅ Nowy model zapisany.")
     return model
 
-def fetch_mock_data():
-    # Przykładowe dane symulujące rynek
-    X = np.random.rand(100, 5)
-    y = np.random.randint(0, 2, 100)
-    return X, y
+import oandapyV20
+import oandapyV20.endpoints.instruments as instruments
+
+def fetch_oanda_data():
+    client = oandapyV20.API(access_token=os.getenv("ACCESS_TOKEN"))
+    params = {
+        "granularity": "M5",  # 5-minutowe świece
+        "count": 100
+    }
+    r = instruments.InstrumentsCandles(instrument="EUR_USD", params=params)
+    client.request(r)
+    candles = r.response["candles"]
+
+    # Przekształć do numpy array: otwarcie, max, min, zamknięcie, wolumen
+    X = []
+    y = []
+
+    for i in range(len(candles) - 1):
+        c = candles[i]
+        next_c = candles[i + 1]
+
+        # Prosta funkcja: przewidujemy, czy cena wzrośnie w kolejnym kroku
+        open_price = float(c["mid"]["o"])
+        high = float(c["mid"]["h"])
+        low = float(c["mid"]["l"])
+        close = float(c["mid"]["c"])
+        volume = c["volume"]
+
+        X.append([open_price, high, low, close, volume])
+
+        # y = 1 jeśli kolejna świeca zamknęła się wyżej niż obecna
+        next_close = float(next_c["mid"]["c"])
+        y.append(int(next_close > close))
+
+    return np.array(X), np.array(y)
+
 
 def analyze_and_train(model):
-    X, y = fetch_mock_data()
+    X, y = fetch_oanda_data()
     model.partial_fit(X, y, classes=np.array([0, 1]))
     joblib.dump(model, model_path)
     print("📊 Analiza i trening zakończone.")
