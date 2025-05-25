@@ -1,16 +1,46 @@
 import os
 import time
 import joblib
-import pandas as pd
 import numpy as np
-from flask import Flask
+from flask import Flask, request, jsonify
 from sklearn.linear_model import SGDClassifier
+import oandapyV20
+import oandapyV20.endpoints.instruments as instruments
 
 # Flask
 app = Flask(__name__)
 
 # Ścieżka do modelu
 model_path = "smart_money_model.pkl"
+
+def fetch_oanda_data():
+    client = oandapyV20.API(access_token=os.getenv("ACCESS_TOKEN"))
+    params = {
+        "granularity": "M5",  # 5-minutowe świece
+        "count": 100
+    }
+    r = instruments.InstrumentsCandles(instrument="EUR_USD", params=params)
+    client.request(r)
+    candles = r.response["candles"]
+
+    X, y = [], []
+
+    for i in range(len(candles) - 1):
+        c = candles[i]
+        next_c = candles[i + 1]
+
+        open_price = float(c["mid"]["o"])
+        high = float(c["mid"]["h"])
+        low = float(c["mid"]["l"])
+        close = float(c["mid"]["c"])
+        volume = c["volume"]
+
+        X.append([open_price, high, low, close, volume])
+
+        next_close = float(next_c["mid"]["c"])
+        y.append(int(next_close > close))
+
+    return np.array(X), np.array(y)
 
 def load_or_create_model():
     if os.path.exists(model_path):
@@ -23,64 +53,30 @@ def load_or_create_model():
             print("🧹 Usunięto uszkodzony model, tworzenie nowego...")
 
     print("🧠 Tworzenie nowego modelu...")
-    model = SGDClassifier()
+    model = SGDClassifier(loss="log_loss")
     X, y = fetch_oanda_data()
     model.partial_fit(X, y, classes=np.array([0, 1]))
     joblib.dump(model, model_path)
     print("✅ Nowy model zapisany.")
     return model
 
-import oandapyV20
-import oandapyV20.endpoints.instruments as instruments
-
-def fetch_oanda_data():
-    client = oandapyV20.API(access_token=os.getenv("ACCESS_TOKEN"))
-    params = {
-        "granularity": "M5",  # 5-minutowe świece
-        "count": 100
-    }
-    r = instruments.InstrumentsCandles(instrument="EUR_USD", params=params)
-    client.request(r)
-    candles = r.response["candles"]
-
-    # Przekształć do numpy array: otwarcie, max, min, zamknięcie, wolumen
-    X = []
-    y = []
-
-    for i in range(len(candles) - 1):
-        c = candles[i]
-        next_c = candles[i + 1]
-
-        # Prosta funkcja: przewidujemy, czy cena wzrośnie w kolejnym kroku
-        open_price = float(c["mid"]["o"])
-        high = float(c["mid"]["h"])
-        low = float(c["mid"]["l"])
-        close = float(c["mid"]["c"])
-        volume = c["volume"]
-
-        X.append([open_price, high, low, close, volume])
-
-        # y = 1 jeśli kolejna świeca zamknęła się wyżej niż obecna
-        next_close = float(next_c["mid"]["c"])
-        y.append(int(next_close > close))
-
-    return np.array(X), np.array(y)
-
-def generate_signal(model):
-    # Pobierz najnowsze dane (ostatnia świeca)
+def generate_signal(model, threshold=0.9):
     X, _ = fetch_oanda_data()
     if len(X) == 0:
         print("⚠️ Brak danych do analizy.")
         return None
 
-    last_data = X[-1].reshape(1, -1)  # przygotuj do predykcji
-    prediction = model.predict(last_data)[0]
+    last_data = X[-1].reshape(1, -1)
+    proba = model.predict_proba(last_data)[0]
 
-    signal = "BUY" if prediction == 1 else "SELL"
-    print(f"📢 Wygenerowany sygnał: {signal}")
-    return signal
-
-
+    if max(proba) >= threshold:
+        prediction = np.argmax(proba)
+        signal = "BUY" if prediction == 1 else "SELL"
+        print(f"📢 Mocny sygnał: {signal} (pewność: {max(proba):.2f})")
+        return signal
+    else:
+        print(f"🤔 Brak silnego sygnału (pewność: {max(proba):.2f})")
+        return None
 
 def analyze_and_train(model):
     X, y = fetch_oanda_data()
@@ -91,6 +87,17 @@ def analyze_and_train(model):
 @app.route("/")
 def home():
     return "✅ Bot działa!"
+
+@app.route("/webhook", methods=["POST"])
+def webhook():
+    try:
+        signal = generate_signal(model)
+        if signal:
+            return jsonify({"signal": signal}), 200
+        else:
+            return jsonify({"message": "No strong signal."}), 204
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == "__main__":
     print("✅ Bot uruchomiony...")
@@ -104,4 +111,4 @@ if __name__ == "__main__":
 
     while True:
         analyze_and_train(model)
-        time.sleep(60)
+        time.sleep(60)  # co 5 minut, by nie spamować
