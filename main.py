@@ -1,75 +1,50 @@
+import os
 import time
+import joblib
 import pandas as pd
 import numpy as np
+from flask import Flask
 from sklearn.linear_model import SGDClassifier
-from oandapyV20 import API
-import oandapyV20.endpoints.instruments as instruments
-from datetime import datetime
 
-import os
+# Flask
+app = Flask(__name__)
 
-ACCESS_TOKEN = os.getenv("ACCESS_TOKEN")
-ACCOUNT_ID = os.getenv("ACCOUNT_ID")
+# Ścieżka do modelu
+model_path = "smart_money_model.pkl"
 
-INSTRUMENT = "XAU_USD"
-GRANULARITY = "M1"
+def load_or_create_model():
+    if os.path.exists(model_path):
+        print("📦 Ładowanie istniejącego modelu...")
+        return joblib.load(model_path)
+    print("🧠 Tworzenie nowego modelu...")
+    return SGDClassifier()
 
-client = API(access_token=ACCESS_TOKEN)
-model = SGDClassifier()
-trained = False
+def fetch_mock_data():
+    # Przykładowe dane symulujące rynek
+    X = np.random.rand(100, 5)
+    y = np.random.randint(0, 2, 100)
+    return X, y
 
-def fetch_latest_data(count=100):
-    params = {
-        "count": count,
-        "granularity": GRANULARITY,
-        "price": "M"
-    }
-    r = instruments.InstrumentsCandles(instrument=INSTRUMENT, params=params)
-    client.request(r)
-    candles = r.response.get("candles")
-    data = [{
-        "time": c["time"],
-        "open": float(c["mid"]["o"]),
-        "high": float(c["mid"]["h"]),
-        "low": float(c["mid"]["l"]),
-        "close": float(c["mid"]["c"])
-    } for c in candles if c["complete"]]
-    return pd.DataFrame(data)
+def analyze_and_train(model):
+    X, y = fetch_mock_data()
+    model.partial_fit(X, y, classes=np.array([0, 1]))
+    joblib.dump(model, model_path)
+    print("📊 Analiza i trening zakończone.")
 
-def generate_features(df):
-    df["return"] = df["close"].pct_change()
-    df["volatility"] = df["return"].rolling(window=5).std()
-    df.dropna(inplace=True)
-    return df[["return", "volatility"]], (df["close"].shift(-5) > df["close"]).astype(int)
+@app.route("/")
+def home():
+    return "✅ Bot działa!"
 
-def save_signal_log(signal, time, price, filename="logs.csv"):
-    with open(filename, "a") as f:
-        f.write(f"{time},{price},{signal}\n")
+if __name__ == "__main__":
+    print("✅ Bot uruchomiony...")
 
-print("✅ Bot uruchomiony i gotowy do nauki...")
+    ACCESS_TOKEN = os.getenv("ACCESS_TOKEN")
+    ACCOUNT_ID = os.getenv("ACCOUNT_ID")
+    print("🔑 ACCESS_TOKEN:", bool(ACCESS_TOKEN))
+    print("👤 ACCOUNT_ID:", bool(ACCOUNT_ID))
 
-while True:
-    try:
-        df = fetch_latest_data()
-        X, y = generate_features(df)
-        y = y.iloc[-len(X):]
+    model = load_or_create_model()
 
-        if len(X) < 10:
-            print("⚠️ Zbyt mało danych do uczenia...")
-            time.sleep(60)
-            continue
-
-        model.partial_fit(X, y, classes=np.array([0, 1]))
-        prediction = model.predict(X[-1].reshape(1, -1))[0]
-        timestamp = df.iloc[-1]["time"]
-        price = df.iloc[-1]["close"]
-
-        if prediction == 1:
-            print(f"📈 [{timestamp}] SIGNAL: AI SMART BUY at {price}")
-            save_signal_log("AI SMART BUY", timestamp, price)
-
-        time.sleep(60)
-
-    except Exception as e:
-        print("❌ Błąd:", e)
+    while True:
+        analyze_and_train(model)
         time.sleep(60)
