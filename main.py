@@ -93,11 +93,13 @@ def webhook():
     try:
         signal = generate_signal(model)
         if signal:
+            print(f"✅ Wysłano sygnał: {signal}")
             return jsonify({"signal": signal}), 200
         else:
-            return jsonify({"message": "No strong signal."}), 204
+            return jsonify({"message": "Brak sygnału."}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
 
 if __name__ == "__main__":
     print("✅ Bot uruchomiony...")
